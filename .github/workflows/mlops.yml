@@ -49,7 +49,7 @@ jobs:
 
       - name: Authenticate to Cloud Storage
         env:
-          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GCP_SA_KEY: ${{ secrets.CLOUD_CREDENTIALS || secrets.GCP_SA_KEY }}
         run: |
           python -c "
           import os, json
