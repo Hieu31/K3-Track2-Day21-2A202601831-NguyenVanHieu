@@ -9,9 +9,6 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # JOB 1 - UNIT TEST
-  # Chay unit tests tren du lieu ao (khong can ket noi cloud storage).
-  # Neu co bat ky test nao that bai, pipeline dung lai o day va khong tien hanh
-  # huan luyen hay trien khai.
   # ---------------------------------------------------------------------------
   test:
     name: Unit Test
@@ -32,8 +29,6 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # JOB 2 - TRAIN
-  # Xac thuc cloud storage, pull du lieu bang DVC, huan luyen mo hinh, upload artifact.
-  # Chi chay khi Job 1 (Unit Test) hoan thanh thanh cong.
   # ---------------------------------------------------------------------------
   train:
     name: Train
@@ -53,11 +48,24 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Authenticate to Cloud Storage
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
-          cat << 'EOF' > /tmp/sa-key.json
-          ${{ secrets.GCP_SA_KEY }}
-          EOF
-          cp /tmp/sa-key.json sa-key.json
+          python -c "
+          import os, json
+          key = os.environ.get('GCP_SA_KEY', '').strip()
+          if not key:
+              raise SystemExit('ERROR: GCP_SA_KEY secret is empty. Please check GitHub Secrets.')
+          try:
+              json.loads(key)
+          except Exception as e:
+              raise SystemExit(f'ERROR: GCP_SA_KEY secret is not valid JSON: {e}')
+          with open('/tmp/sa-key.json', 'w') as f:
+              f.write(key)
+          with open('sa-key.json', 'w') as f:
+              f.write(key)
+          print('GCP SA Key successfully written and validated.')
+          "
           echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa-key.json" >> $GITHUB_ENV
           dvc remote modify myremote credentialpath /tmp/sa-key.json
 
@@ -77,20 +85,21 @@ jobs:
           echo "accuracy=$ACC" >> $GITHUB_OUTPUT
 
       - name: Upload model to Cloud Storage
+        env:
+          GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa-key.json
         run: |
-          python - <<'EOF'
+          python -c "
           import os
           from google.cloud import storage
 
-          bucket_name = os.environ.get("GCS_BUCKET", "${{ secrets.GCS_BUCKET }}")
+          bucket_name = os.environ.get('GCS_BUCKET')
           client = storage.Client()
           bucket = client.bucket(bucket_name)
-          blob = bucket.blob("models/latest/model.pkl")
-          blob.upload_from_filename("models/model.pkl")
-          print("Model uploaded successfully to GCS.")
-          EOF
-        env:
-          GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
+          blob = bucket.blob('models/latest/model.pkl')
+          blob.upload_from_filename('models/model.pkl')
+          print('Model uploaded successfully to GCS.')
+          "
 
       - name: Save metrics as artifact
         uses: actions/upload-artifact@v4
@@ -101,9 +110,6 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # JOB 3 - EVAL
-  # Kiem tra nguong chat luong (accuracy >= 0.70).
-  # Pipeline dung lai o day neu mo hinh chua dat yeu cau.
-  # Chi chay khi Job 2 (Train) hoan thanh thanh cong.
   # ---------------------------------------------------------------------------
   eval:
     name: Eval
@@ -113,19 +119,17 @@ jobs:
 
       - name: Check eval gate
         run: |
-          python - <<'EOF'
-          acc = float("${{ needs.train.outputs.accuracy }}")
-          print(f"Current Model Accuracy: {acc:.4f}")
+          python -c "
+          acc = float('${{ needs.train.outputs.accuracy }}')
+          print(f'Current Model Accuracy: {acc:.4f}')
           if acc < 0.70:
-              raise SystemExit(f"FAILED: accuracy {acc:.4f} < 0.70. Huy deploy.")
-          print("PASSED: Dang trien khai model.")
-          EOF
+              raise SystemExit(f'FAILED: accuracy {acc:.4f} < 0.70. Huy deploy.')
+          print('PASSED: Dang trien khai model.')
+          "
 
 
   # ---------------------------------------------------------------------------
   # JOB 4 - DEPLOY
-  # Trien khai len VM qua SSH.
-  # Chi chay khi Job 3 (Eval) hoan thanh thanh cong.
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy
@@ -140,7 +144,8 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            sudo systemctl restart mlops-serve
+            sudo systemctl restart mlops-serve || sudo systemctl restart mlops.service
             sleep 5
             curl -sf http://localhost:8000/health && echo "Health check passed." || exit 1
+
 
