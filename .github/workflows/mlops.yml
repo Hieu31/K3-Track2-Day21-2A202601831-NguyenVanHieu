@@ -144,8 +144,12 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            sudo systemctl restart mlops-serve || sudo systemctl restart mlops.service
-            sleep 5
-            curl -sf http://localhost:8000/health && echo "Health check passed." || exit 1
+            sudo systemctl restart mlops-serve.service
+            for i in {1..10}; do
+              curl -sf http://localhost:8000/health && echo "Health check passed." && exit 0
+              echo "Waiting for server startup ($i/10)..."
+              sleep 3
+            done
+            exit 1
 
 
