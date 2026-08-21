@@ -1,0 +1,5 @@
+[core]
+    remote = myremote
+['remote "myremote"']
+    url = gs://mlops-bucket-nguyenvanhieu/dvc
+    credentialpath = ../sa-key.json
