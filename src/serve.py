@@ -11,6 +11,8 @@ GCS_MODEL_KEY = "models/latest/model.pkl"
 MODEL_PATH = os.path.expanduser("~/models/model.pkl")
 
 
+
+
 def download_model():
     """Tải file model.pkl từ GCS về máy khi server khởi động."""
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
